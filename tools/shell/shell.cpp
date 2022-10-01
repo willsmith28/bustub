@@ -1,33 +1,79 @@
 #include <iostream>
+#include <string>
 #include "binder/binder.h"
 #include "common/bustub_instance.h"
 #include "common/exception.h"
 #include "common/util/string_util.h"
+#include "linenoise/linenoise.h"
 
-auto main() -> int {
-
-  // TODO(chi): add Bustub class with a `execute_sql` interface, instead of setting up everything here.
-
-  std::string query;
-
+// NOLINTNEXTLINE
+auto main(int argc, char **argv) -> int {
   auto bustub = std::make_unique<bustub::BustubInstance>("test.db");
 
-  std::cout << "Note: This shell will be able to enter interactive mode only after you have completed the buffer pool manager. It will be able to execute SQL queries after you have implemented necessary query executors." << std::endl << std::endl;
+  auto default_prompt = "bustub> ";
+  auto emoji_prompt = "\U0001f6c1> ";  // the bathtub emoji
+  bool use_emoji_prompt = false;
+  bool disable_tty = false;
 
-  // Generate test tables
-  // TODO(chi): remove after we finished bind / execute create table and insert.
-  bustub->GenerateTestTable();
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--emoji-prompt") == 0) {
+      use_emoji_prompt = true;
+      break;
+    }
+    if (strcmp(argv[i], "--disable-tty") == 0) {
+      disable_tty = true;
+      break;
+    }
+  }
+
+  bustub->GenerateMockTable();
+
+  if (bustub->buffer_pool_manager_ != nullptr) {
+    bustub->GenerateTestTable();
+  }
 
   std::cout << "Welcome to the BusTub shell! Type \\help to learn more." << std::endl << std::endl;
 
+  linenoiseHistorySetMaxLen(1024);
+  linenoiseSetMultiLine(1);
+
+  auto prompt = use_emoji_prompt ? emoji_prompt : default_prompt;
+
   while (true) {
-    std::cout << "> ";
-    std::getline(std::cin, query);
-    if (!std::cin) {
-      break;
+    std::string query;
+    bool first_line = true;
+    while (true) {
+      auto line_prompt = first_line ? prompt : "... ";
+      if (!disable_tty) {
+        char *query_c_str = linenoise(line_prompt);
+        if (query_c_str == nullptr) {
+          return 0;
+        }
+        query += query_c_str;
+        if (bustub::StringUtil::EndsWith(query, ";") || bustub::StringUtil::StartsWith(query, "\\")) {
+          break;
+        }
+        query += " ";
+        linenoiseFree(query_c_str);
+      } else {
+        std::string query_line;
+        std::cout << line_prompt;
+        std::getline(std::cin, query_line);
+        if (!std::cin) {
+          return 0;
+        }
+        query += query_line;
+        if (bustub::StringUtil::EndsWith(query, ";") || bustub::StringUtil::StartsWith(query, "\\")) {
+          break;
+        }
+        query += "\n";
+      }
+      first_line = false;
     }
 
-    std::cout << query << std::endl;
+    if (!disable_tty) {
+      linenoiseHistoryAdd(query.c_str());
+    }
 
     try {
       auto result = bustub->ExecuteSql(query);
@@ -38,8 +84,6 @@ auto main() -> int {
       std::cerr << ex.what() << std::endl;
     }
   }
-
-  // unreachable
 
   return 0;
 }
